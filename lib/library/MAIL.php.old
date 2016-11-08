@@ -1,0 +1,182 @@
+<?php    
+if (!class_exists("MAIL")){
+    class MAIL{
+        private $to;
+        private $from;
+        private $cc;
+        private $bcc;
+        private $subject;
+        private $body;
+        private $attachment;
+        private $attachment_count = 0;
+
+        private $mail_separator = ",";
+
+        public function __construct(){
+            $server = new SERVER();
+            $this->to = "";
+            $a = $server->get(SERVER::SERVER_NAME);
+            $a = str_replace("www.", "", $a);
+            $this->from = "no-reply@" . $a;
+            $this->cc = "";
+            $this->bcc = "";
+            $this->subject = "";
+            $this->body = "";
+            $this->attachment = array();
+            unset($server);
+        }
+
+        /**
+         * Field recipients are the audience of the message
+         * @param String $mail_address
+         */
+        public function addTo($mail_address){
+            $this->to .= $this->cleanMail($mail_address) . $this->mail_separator;
+        }
+
+        /**
+         * Field recipients are those being discreetly or surreptitiously informed of the communication and cannot be seen by any of the other addressees.
+         * @param String $mail_address
+         */
+        public function addBcc($mail_address){
+            $this->bcc .= $this->cleanMail($mail_address) . $this->mail_separator;
+        }
+
+        /**
+         * Field recipients are others whom the author wishes to publicly inform of the message (carbon copy)
+         * @param String $mail_address
+         */
+        public function addCc($mail_address){
+            $this->cc .= $this->cleanMail($mail_address) . $this->mail_separator;
+        }
+
+        /**
+         * Set which E-mail address that you are going to use as mail header
+         * @param String $mail_address
+         */
+        public function setFrom($mail_address){
+            $a = $this->cleanMail($mail_address);
+
+            //From email address cannot have 2 mails
+            if (strpos($a, $this->mail_separator) !== FALSE){
+                $b = explode($this->mail_separator, $a);
+                $this->from = $b;
+                unset($b);
+            }else{
+                $this->from = $a;
+            }
+            unset($a);
+        }
+
+        /**
+         * Set Path of file or file controls name which you want to attach to your mail
+         * @param String $pathOfFile exact path of file / Controls name
+         * @param String $name the name of file or NULL if you want to send default name
+         */
+        public function attach($pathOfFile, $name = NULL){
+            $this->attachment[$this->attachment_count][0] = $pathOfFile;
+            $this->attachment[$this->attachment_count][1] = $name;
+            $this->attachment_count += 1;
+        }
+
+        /**
+         * Set subject of your mail
+         * @param String $subject
+         */
+        public function setSubject($subject){
+            $this->subject = $subject;
+        }
+
+        /**
+         * Set body of your mail
+         * @param String $body
+         */
+        public function setBody($body){
+            $this->body = $body;
+        }
+
+        /**
+         * Start send mail
+         */
+        public function send(){
+            $attachment = "";
+            // boundary 
+            $semi_rand = md5(time()); 
+            $mime_boundary = "==Multipart_Boundary_x{$semi_rand}x";
+
+            $attachment = "";
+            foreach($this->attachment as $key=>$val){
+                $filePath = $val[0];
+                $fileName = $val[1];
+                if ($fileName === NULL) {
+                    $fileName = basename($filePath);
+                }
+
+                if(file_exists($filePath)){
+                    $handle = fopen($filePath,"rb");
+                    rewind($handle);
+                    $size = filesize($filePath);
+                    $data = fread($handle, $size);
+                    fclose($handle);
+                    $data = chunk_split(base64_encode($data));
+                    $b = array();
+                    $b[] = "Content-Type:  \"" . "application/octet-stream" . "\"";
+                    $b[] = "Content-Transfer-Encoding: base64";
+                    $b[] = "Content-Disposition: attachment; filename=\"$fileName\"";
+                    $attachment .= implode("\r\n", $b);
+                    $attachment .= "\r\n\r\n" . $data . "\r\n\r\n";
+                    $attachment .= "--{$mime_boundary}\r\n";
+                    unset ($b);
+                }
+            }
+
+            $to1 = substr($this->to, 0, strlen($this->to) - strlen($this->mail_separator));
+            $header = "From: " . $this->from . "\r\n";
+            //$header .= "To: " . $to1 . "\r\n";
+            if ($this->cc !== ""){ 
+                $to = substr($this->cc, 0, strlen($this->cc) - strlen($this->mail_separator));
+                $header .= "Cc: " . $to . "\r\n"; 
+            }
+            if ($this->bcc !== ""){ 
+                $to = substr($this->bcc, 0, strlen($this->bcc) - strlen($this->mail_separator));
+                $header .= "Bcc: " . $to . "\r\n";
+            }
+
+            //unset($to);
+            if ($attachment !== ""){ 
+                $header .= "Content-Type: multipart/mixed;\r\n boundary=\"{$mime_boundary}\"\r\n";
+                // multipart boundary 
+                $message = "This is a multi-part message in MIME format.\r\n\r\n" . "--{$mime_boundary}\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=ISO-8859-1\r\nContent-Transfer-Encoding: 7bit\r\n\r\n" . $this->body . "\r\n\r\n"; 
+                $message .= "--{$mime_boundary}\r\n";
+                $message .= $attachment;
+            }else{ 
+                $header .= "Content-Type: text/html;\r\n boundary=\"{$mime_boundary}\"\r\n";
+                $message = $this->body;
+            }
+            return mail($to1, $this->subject, $message, $header, "-f -r $this->from");
+        }
+
+        private function cleanMail($string_mail){
+            $string_mail = trim(strtolower($string_mail));
+
+            $param = array(":", "cc", "bcc", "to", "from", "subject", "body", "reply-to");
+            foreach ($param as $p){
+                $string_mail = str_replace($p, "", $string_mail);
+            }
+            while(strpos($string_mail, "  ") !== FALSE) $string_mail = str_replace ("  ", " ", $string_mail);
+
+            //replace blacklist character
+            $param = array(";", ",");
+            foreach ($param as $val){
+                $string_mail = str_replace($val, $this->mail_separator, $string_mail);
+            }
+
+            //replace duplicated seperators
+            $val1 = $this->mail_separator . $this->mail_separator;
+            while(strpos($string_mail, $val1) !== FALSE) $string_mail = str_replace ($val1, $this->mail_separator, $string_mail);
+
+            return $string_mail;
+        }
+    }
+}
+?>
