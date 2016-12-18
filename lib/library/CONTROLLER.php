@@ -17,15 +17,15 @@ class CONTROLLER{
         try{
             $name  = trim(strtolower($name));
             if ($name == '') $name = 'index';
-            if (CONFIG::isStartWithNumber($name)) $name = '_'.$name;
+            else if (CONFIG::isStartWithNumber($name)) $name = '_'.$name;
 
-            $class = $name."Controller";
+            $class = $name.'Controller';
             if (isset($this->controller[$name]) === true) return $this->controller[$name];
 
             if (file_exists(CONTROLLER_  . "{$class}.php") === false){
                 $class = $this->defaultPage.'Controller';
                 $this->controller[$name] = $this->getPage(CONTROLLER_ . "{$class}.php", $class);
-                if ($this->controller[$name] == null) echo "Page Not Found!";
+                if ($this->controller[$name] == null) echo 'Page Not Found!';
                 return null;
             }
 
@@ -36,11 +36,10 @@ class CONTROLLER{
                 $this->controller[$name]->view = &$this->session->{DATA::viewString};
                 $this->controller[$name]->model = &$this->session->{DATA::modelString};
                 $this->controller[$name]->ctrl = &$this->session->{DATA::ctrlString};
-
                 $this->controller[$name]->url = &$this->session->{DATA::urlString};
                 $this->controller[$name]->session = &$this->session;
 
-                if (method_exists($this->controller[$name], 'init'))
+                if (method_exists($this->controller[$name], 'init') === true)
                     $this->controller[$name]->init();
             }
             else

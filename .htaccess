@@ -4,7 +4,6 @@ Options All -Indexes
 ServerSignature Off
 
 RewriteEngine on
-RewriteCond %{REQUEST_URI} !^\.(css|jpg|gif|zip|png|js|rar|mp4|mp3|wave)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ /index.php?dara=$1 [L,QSA]
