@@ -303,7 +303,7 @@ class DATABASE {
             if($zip->open($fileName . '.zip', ZipArchive::CREATE) !== true) return $file;
             $zip->addFromString($file, file_get_contents($fileName));
             $zip->close();
-            //@unlink($fileName);
+            @unlink($fileName);
             $file = $file . '.zip';
         }
         return $file;
@@ -324,10 +324,9 @@ class DATABASE {
             if(extension_loaded('zip') !== true) return 'Unable to uncompress file!';
             
             $filePath = explode('/', $fileName);
-//            $file1 = end($filePath);
             array_pop($filePath);
             $filePath = implode('/', $filePath);
-            $filePath = $filePath[0];
+            
             $zip = new ZipArchive();
             $zip->open($fileName);
             $zip->extractTo($filePath);
