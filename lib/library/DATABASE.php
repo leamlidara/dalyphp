@@ -183,12 +183,14 @@ class DATABASE {
     }
     
     /**
-     * Backup database and save to specific path. if you are using with large database please considered to use ini_set('max_execution_time', 0);
+     * Backup database and save to specific path.
      * @param string $filePath File path of backed up database
+     * @param Array $tables array of table names which you want to backup or NULL if you want to backup a whole database
      * @param boolean $isCompress
      * @return string filename in file path which you are provided
      */
-    function backupDatabase($filePath, $isCompress = true){
+    function backupDatabase($filePath, $backup_tables = NULL, $isCompress = true){
+        ini_set('max_execution_time', 0);
         $date = strtotime(date('Y-m-d H:i:s'));
         $fn = function($fileName, $text){
             file_put_contents($fileName, $text, FILE_APPEND);
@@ -232,34 +234,43 @@ class DATABASE {
                 '/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;' .PHP_EOL . PHP_EOL);
         
         foreach($tables as $table=>$type){
-            if(strpos($type, 'VIEW') !== false) continue;
+            if(strpos($type, 'VIEW') !== false || (is_null($backup_tables) === false && in_array($table, $backup_tables) === false)) continue;
             $fn($fileName, '# Dump of table '.$table . PHP_EOL . '# ------------------------------------------------------------'.PHP_EOL);
             $fn($fileName, 'DROP TABLE IF EXISTS `'.$table.'`;'.PHP_EOL);
             $ab = $this->executeQuery('SHOW CREATE TABLE `'.$table.'`', array(), PDO::FETCH_BOTH);
             $ab = $ab[0][1];
-            $result .= $ab . ';' . PHP_EOL.PHP_EOL;
+            $fn($fileName, $ab . ';' . PHP_EOL.PHP_EOL);
             
-            $ab = $this->executeQuery('select * from `' . $table . '`', array(), PDO::FETCH_ASSOC);
-            if(count($ab) > 0){
-                $a_key = array_keys($ab[0]);
-                $result .= 'LOCK TABLES `'.$table.'` WRITE;'.PHP_EOL.'/*!40000 ALTER TABLE `'.$table.'` DISABLE KEYS */;'.PHP_EOL.PHP_EOL.'INSERT INTO `'.$table . '`(';
-                foreach($a_key as $key){
-                    $result .= '`'.$key.'`, ';
-                }
-                $result = substr($result, 0, strlen($result) - 2) . ') VALUES' . PHP_EOL . ' (';
-                foreach($ab as $val){
+            $itemPerPage = 250;
+            $pages = $this->executeScalare('SELECT COUNT(1) FROM `' . $table . '`');
+            $pages = ($pages % $itemPerPage > 0 ? ((int)($pages / $itemPerPage) + 1) : (int)($pages / $itemPerPage));
+            
+            if($pages > 0){
+                $fn($fileName, 'LOCK TABLES `'.$table.'` WRITE;'.PHP_EOL.'/*!40000 ALTER TABLE `'.$table.'` DISABLE KEYS */;'.PHP_EOL.PHP_EOL);
+                for($page = 0; $page < $pages; $page++){
+                    $ab = $this->executeQuery('SELECT * FROM `' . $table . '` LIMIT ' . ($page * $itemPerPage) . ', ' . $itemPerPage, array(), PDO::FETCH_ASSOC);
+                    $a_key = array_keys($ab[0]);
+                    $result .= 'INSERT INTO `'.$table . '`(';
                     foreach($a_key as $key){
-                        if(is_numeric($val[$key]) === false)
-                            $result .= '\'' . str_replace('\n', "\\n", addslashes($val[$key])) . '\', ';
-                        else $result .= "{$val[$key]}, ";
+                        $result .= '`'.$key.'`, ';
                     }
-                    $result = substr($result, 0, strlen($result) - 2) . '),'.PHP_EOL.' (';
+                    $result = substr($result, 0, strlen($result) - 2) . ') VALUES' . PHP_EOL . ' (';
+                    foreach($ab as $val){
+                        foreach($a_key as $key){
+                            if(is_numeric($val[$key]) === false || preg_match("/[a-zA-Z ]/", $val[$key]) === 1)
+                                $result .= '\'' . str_replace('\n', "\\n", addslashes($val[$key])) . '\', ';
+                            else if(is_null($val[$key]) === true) $result .= 'NULL, ';
+                            else $result .= $val[$key] . ', ';
+                        }
+                        $result = substr($result, 0, strlen($result) - 2) . '),'.PHP_EOL.' (';
+                    }
+                    $fn($fileName, substr($result, 0, strlen($result) - (3 + strlen(PHP_EOL))) . ';' . PHP_EOL);
+                    $result = '';
                 }
-                $result = substr($result, 0, strlen($result) - (3 + strlen(PHP_EOL))) . ';' . PHP_EOL . PHP_EOL . '/*!40000 ALTER TABLE `'.$table.'` ENABLE KEYS */;'.PHP_EOL.'UNLOCK TABLES;'.PHP_EOL;
-                
+                $fn($fileName, '/*!40000 ALTER TABLE `'.$table.'` ENABLE KEYS */;'.PHP_EOL.'UNLOCK TABLES;'.PHP_EOL . PHP_EOL);
             }
-            $fn($fileName, $result . PHP_EOL . PHP_EOL);
-            $result = '';
+            
+            $fn($fileName, PHP_EOL . PHP_EOL);
             unset($ab);
         }
         
@@ -317,6 +328,7 @@ class DATABASE {
     function restoreDatabase($fileName){
         if(is_file($fileName) === false) return 'File not exist!';
         
+        ini_set('max_execution_time', 0);
         $isCompress = false;
         $file1 = explode('.', $fileName);
         $extension = strtolower(end($file1));
@@ -338,9 +350,27 @@ class DATABASE {
             unset($filePath, $zip);
         }else if($extension != 'sql') return 'Unsupported extension!';
         unset($file1, $extension);
-        
-        $this->executeUpdate(file_get_contents($fileName));
+        $this->beginTransaction();
+        try{
+            $lines = file($fileName);
+            $sql = ''; $cnt = count($lines);
+            for($i = 0; $i < $cnt; $i++){
+                if (substr($lines[$i], 0, 2) == '--' || $lines[$i] == '') continue;
+                $sql .= $lines[$i];
+                if(substr(trim($lines[$i]), -1, 1) == ';'){
+                    $this->executeUpdate($sql);
+                    $sql = '';
+                }
+                $lines[$i] = '';
+            }
+            
+            $this->commit();
+        }catch(Exception $e){
+            $this->rollback();
+            return $e->getMessage();
+        }
         if($isCompress === true) @unlink($fileName);
+        return true;
     }
 }
 ?>

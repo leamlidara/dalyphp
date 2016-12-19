@@ -68,8 +68,8 @@ if (!isset($_SESSION)){
 }
 
 ob_start();
-@ini_set("memory_limit", "256M"); 
-date_default_timezone_set("Asia/Phnom_Penh");
+@ini_set('memory_limit', '256M');
+date_default_timezone_set('Asia/Phnom_Penh');
 
 class CONFIG{
     private $website = '';
