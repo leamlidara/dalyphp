@@ -232,7 +232,7 @@ class ROUTE{
             
             $matches = array();
             if(preg_match_all('/<\s*([^\/\s]+)\s*(?:>|(\s[^<>]+?)\s*>)/', $html, $matches) !== 1){
-                return preg_replace('/\s+/', ' ', $fnInlineStyle($html));
+                return preg_replace('/\s{2,}/', ' ', $fnInlineStyle($html));
             }
             
             $matches[1] = $matches[1][0];
