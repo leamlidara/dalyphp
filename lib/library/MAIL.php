@@ -1,9 +1,10 @@
 <?php    
-include dirname(__FILE__).'/PHPMailer/PHPMailerAutoload.php';
+
 class MAIL{
     private $mail, $smtp_ = array(), $from = array();
     public function __construct(){
         $this->mail = new PHPMailer();
+        $this->mail->CharSet = 'UTF-8';
     }
 
     /**

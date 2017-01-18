@@ -31,7 +31,7 @@ class ROUTE{
               error_reporting(E_ALL);
               ini_set('display_errors', 1);
        }
-        @header('X-Powered-By: DaLy-PHP');
+        @header('X-Powered-By: DalyPHP');
         @header('x-frame-options: SAMEORIGIN');
         @header('X-Content-Type-Options: nosniff');
 
@@ -58,7 +58,7 @@ class ROUTE{
         }
 
         //get request method
-        $method = strtoupper($_SERVER['REQUEST_METHOD']);
+        $method = isset($_SERVER['REQUEST_METHOD']) === true ? strtoupper($_SERVER['REQUEST_METHOD']) : 'GET';
 
         //Check if Local or hosting
         $isHosting = true;
@@ -77,20 +77,11 @@ class ROUTE{
             echo 'No method were found!'; exit();
         }
 
-        if ($isHosting===true){
+        if ($isHosting === true){
             $content = @ob_get_contents();
             @ob_clean();
 
-            $content = preg_replace('/<!--(?!<!)[^\[>].*?-->/', '', $content);
-            $content = preg_replace('/\s*$^\s*/m', ' ', $content);
-            $content = preg_replace('/[ \t]+/', ' ', $content);
-            $content = str_replace("\n ", "\n", $content);
-
-            $content = str_replace(array(': ', ' :'), ':', $content);
-            $content = str_replace(array(' =', '= '), '=', $content);
-            $content = str_replace("\r\n\r\n\r\n", "\r\n\r\n", $content);
-            $content = str_replace("\r\r\r", "\r\r", $content);
-            echo str_replace("\n\n\n", "\n\n", $content);
+            echo $this->minify($content);
             unset($content);
         }
         @ob_flush();
@@ -111,6 +102,178 @@ class ROUTE{
         $session->destroy(DATA::viewString);
         $session->destroy(DATA::urlString);
         if (count($session->get("ctrl_php_dara_frmWork168Cache")) > 50) $session->destroy("ctrl_php_dara_frmWork168Cache");
+    }
+    
+    private function minify($html){
+        $fnCmt = function($input){
+            $tRegex = '"(?:[^"\\\]++|\\\.)*+"|\'(?:[^\'\\\\]++|\\\.)*+\'';
+            
+            $texts = array();
+            preg_match_all("/{$tRegex}/", $input, $texts);
+            if(count($texts) > 0) $texts = $texts[0];
+            foreach($texts as $text){
+                if(preg_match("/\\\n/", $text) === 1){
+                    $input = str_replace($text, str_replace(array("\\\r\n", "\\\n"), '', $text), $input);
+                }
+            }
+            
+            $split = preg_split('/\n/', $input);
+            $input = '';
+            foreach($split as $s){
+                if(strpos($s, '//') !== false){
+                    if(preg_match('/^(\s*\/\/.*)/', $s) === 1) continue;
+                    $s1 = explode('//', $s);
+                    if(count($s1) === 2){
+                        $s2 = substr_count($s1[0], '\'');
+                        $s3 = substr_count($s1[0], '"');
+                        if(($s2 > 0 && $s2 % 2 == 0) || ($s3 > 0 && $s3 % 2 == 0)) $input .= $s1[0];
+                        else $input .= $s1[0] . '//' . $s1[1];
+                    }else{
+                        $output = $s1[0];
+                        if(strpos($output, '\'') === false && strpos($output, '"') === false){
+                            $input .= $output;
+                        }else{
+                            $cnnnn = count($s1);
+                            for($i=1; $i<$cnnnn; $i++){
+                                $s2 = substr_count($output, '\'');
+                                $s3 = substr_count($output, '"');
+                                if(($s2 > 0 && $s2 % 2 == 0) || ($s3 > 0 && $s3 % 2 == 0)) break;
+
+                                $output .= '//'.$s1[$i];
+                            }
+                            $input .= $output;
+                        }
+                        unset($output);
+                    }
+                    unset($s1, $s2, $s3);
+                }else $input .= $s;
+                unset($s);
+            }
+            unset($split);
+            
+            $cmts = array();
+            preg_match_all('/^(\s*\/\/.*)|^(\s*\/\*[\s\S]*?\*\/)/m', $input, $cmts);
+            if(count($cmts) > 0){
+                $cmts = $cmts[0];
+                foreach($cmts as $cmt){
+                    $isContain = 0;
+                    foreach($texts as $text){
+                        if(strpos($text, $cmt) !== false){
+                            $isContain = 1;
+                            break;
+                        }
+                    }
+                    if($isContain === 0) $input = str_replace($cmt, '', $input);
+                }
+            }
+            return $input;
+        };
+        
+        $fncss = function($css) use (&$fnCmt){
+            $css = $fnCmt($css);
+            $css = preg_split('/(\/\*[\s\S]*?\*\/|"(?:[^"\\\]++|\\\.)*+"|\'(?:[^\'\\\\]++|\\\.)*+\')/', $css, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE);
+            $output = '';
+            foreach($css as $cc){
+                if(trim($cc) === '') continue;
+                $c1 = substr($cc, -1);
+                if(($cc[0] === '"' && substr($cc, -1) === '"') || ($cc[0] === "'" && substr($cc, -1) === "'") || (strpos($cc, '/*') === 0 && substr($cc, -2) === '*/')){
+                    if($cc[0] === '/' && strpos($cc, '/*!') !== 0) continue;
+                    $output .= $cc;
+                } else {
+                    if(stripos($cc, 'calc(') !== false) {
+                        $c1 = array();
+                        if(preg_match_all('/\b(calc\()\s*(.*?)\s*\)/i', $cc, $c1) === 1){
+                            $cc = str_replace($c1[0][0], preg_replace(array('/\s+/', '/\s*([~!@*\(\)=\{\}\[\]:;,>\/])\s*/'), array(' ', '$1'), $c1[2][0]), $cc);
+                        }
+                    }else{
+                        $cc = preg_replace(array("/\b0\.(\d)*/", "/\b0+px/"), array('.$1', '0'), $cc);
+                        $cc = preg_replace(array('/;+([;\}])/', '/\s*([~!@*\(\)+=\{\}\[\]:;,>\/])\s*/', '/(^|[\{\}])(?:[^\{\}]+)\{\}/', '/;+([;\}])/'), '$1', $cc);
+                        $cc = preg_replace(array('/\s+/'), array(''), $cc);
+                        $output .= $cc;
+                    }
+                }
+            }
+            return $output;
+        };
+        
+        $fnjs = function($js) use (&$fnCmt){
+            $js = $fnCmt($js);
+            $js = preg_split('/("(?:[^"\\\]++|\\\.)*+"|\'(?:[^\'\\\\]++|\\\.)*+\'|\/\*[\s\S]*?\*\/|\/[^\n]+?\/(?=[.,;]|[gimuy]|$))/', $js, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE);
+            $output = '';
+            
+            foreach($js as $jj){
+                if(trim($jj) == '') continue;
+                $j1 = substr($jj, -1);
+                if(($jj[0] === '"' && $j1 === '"') || ($jj[0] === '\'' && $j1 === '\'') || ($jj[0] === '/' && $j1 === '/')) {
+                    if(strpos($jj, '//') === 0 || (strpos($jj, '/*') === 0 && strpos($jj, '/*!') !== 0 && strpos($jj, '/*@cc_on') !== 0)) continue;
+                    $output .= $jj;
+                }else{
+                    $output .= preg_replace(array('/(\s*\/\/.*)$/m', '/(\/\*.*\*\/)/m', '/\s*([!%&*\(\)\-=+\[\]\{\}|;:,.<>?\/])\s*/', '/[;,]([\]\}])/', '/\breturn\s+/'), array('', '', '$1', '$1', 'return '), $jj);
+                }
+            }
+            return $output;
+        };
+
+        $fnhtml = function($html) use (&$fncss){
+            $html = trim($html);
+            $fnInlineStyle = function($input) use (&$fncss){
+                $matches1 = array();
+                preg_match_all('/\sstyle=[\'"](.*?)[\'"](\s[a-z]|\s+>|>)/i', $input, $matches1);
+                if(count($matches1) > 1){
+                    $matches1 = $matches1[1];
+                    foreach($matches1 as $m){
+                        $input = str_replace($m, $fncss($m), $input);
+                    }
+                }
+                return $input;
+            };
+            
+            if(preg_match('/^<(pre|code|textarea)/i', $html) === 1) return $fnInlineStyle($html);
+            
+            $matches = array();
+            if(preg_match_all('/<\s*([^\/\s]+)\s*(?:>|(\s[^<>]+?)\s*>)/', $html, $matches) !== 1){
+                return preg_replace('/\s+/', ' ', $fnInlineStyle($html));
+            }
+            
+            $matches[1] = $matches[1][0];
+            
+            if(isset($matches[2]) === false) return '<'.$matches[1] . '>';
+            $matches[2] = $matches[2][0];
+            
+            $m1 = $matches[1];
+            $m2 = $matches[2];
+            
+            $matches[2] = $fnInlineStyle($matches[2]);
+            
+            $m = '<' . $matches[1] . preg_replace(array(
+                            '/\s(checked|selected|async|autofocus|autoplay|controls|defer|disabled|hidden|ismap|loop|multiple|open|readonly|required|scoped)(?:=([\'"]?)(?:true|\1)?\2)/i',
+                            '/\s*([^\s=]+?)(=(?:\S+|([\'"]?).*?\3)|$)/', '/\s+\/$/'
+                        ), array(' $1', ' $1$2', '/'),  str_replace("\n", ' ', $matches[2])) . '>';
+            unset($matches, $ms);
+            return str_replace('<'.$m1.$m2.'>', $m, $html);
+        };
+        
+        $html = preg_replace('/(<(?:img|input)(?:\s[^<>]*?)?\s*\/?>)\s+/i', '$1', $html);
+        $html = preg_split('/(<\!--[\s\S]*?-->|<pre(?:>|\s[^<>]*?>)[\s\S]*?<\/pre>|<code(?:>|\s[^<>]*?>)[\s\S]*?<\/code>|<script(?:>|\s[^<>]*?>)[\s\S]*?<\/script>|<style(?:>|\s[^<>]*?>)[\s\S]*?<\/style>|<textarea(?:>|\s[^<>]*?>)[\s\S]*?<\/textarea>)/i', $html, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE);
+        $output = '';
+        
+        foreach($html as $v) {
+            $v = trim($v);
+            if($v == '') continue;
+            if(preg_match('/<script.*>/', $v) === 1) $output .= $fnjs($v);
+            else if(preg_match('/<style.*>/', $v) === 1) $output .= $fncss($v);
+            else if($v[0] === '<' && substr($v, -1) === '>'){
+                if($v[1] === '!' && strpos($v, '<!--') === 0) {
+                    if(substr($v, -12) !== '<![endif]-->') continue;
+                    $output .= $v;
+                } else $output .= $fnhtml($v);
+            }else $output .= preg_replace('/\s+/', ' ', $v);
+        }
+        
+        unset($html);
+        $output = preg_replace(array('/>([\n\r\t]\s*|\s{2,})</', '/\s+(<\/[^\s]+?>)/', '/\s<\/?(meta|head|body|link|script|html)/i'), array('><', '$1', '<$1'), $output);
+        
+        return $output;
     }
 
     private function appendHtmlToHead($html){

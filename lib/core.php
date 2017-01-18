@@ -1,7 +1,7 @@
 <?php
 /**
  * This framework is written by LEAM LIDARA
- * Version: 1.0.4
+ * Version: 1.1
  * 
  */
 
