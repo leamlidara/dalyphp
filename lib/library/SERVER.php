@@ -12,24 +12,24 @@ class SERVER
     		return $_SERVER['HTTP_CLIENT_IP'];
     	if (isset($_SERVER['HTTP_FORWARDED']))
     		return $_SERVER['HTTP_FORWARDED'];
-    	
+
     	return 'Unknown';
     }
-    
+
     function getSiteURL() {
         $protocol = '//';
         $domainName = $_SERVER['HTTP_HOST'];
         return $protocol.$domainName;
     }
-    
+
     private function getProtocol(){
         return ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] != 'off') || $_SERVER['SERVER_PORT'] == 443) ? 'https' : 'http';
     }
 
     private $index = array(
-        1 => 'PHP_SELF', 
-        2 => 'HTTP_HOST', 
-        3 => 'HTTP_ACCEPT', 
+        1 => 'PHP_SELF',
+        2 => 'HTTP_HOST',
+        3 => 'HTTP_ACCEPT',
         4 => 'HTTP_USER_AGENT',
         5 => 'SERVER_SOFTWARE',
         6 => 'SERVER_NAME',
@@ -39,9 +39,51 @@ class SERVER
         10 => 'REQUEST_URI',
         11 => 'REDIRECT_STATUS',
         13 => 'SITE_PROTOCOL',
-        14 => 'HTTP_REFERER'
+        14 => 'HTTP_REFERER',
+        15 => 'HTTP_CF_IPCOUNTRY'
     );
 
+    function isProxy(){
+        $test_HTTP_proxy_headers = array(
+            'HTTP_VIA',
+            'VIA',
+            'Proxy-Connection',
+            'HTTP_X_FORWARDED_FOR',
+            'HTTP_FORWARDED_FOR',
+            'HTTP_X_FORWARDED',
+            'HTTP_FORWARDED',
+            'HTTP_CLIENT_IP',
+            'HTTP_FORWARDED_FOR_IP',
+            'X-PROXY-ID',
+            'MT-PROXY-ID',
+            'X-TINYPROXY',
+            'X_FORWARDED_FOR',
+            'FORWARDED_FOR',
+            'X_FORWARDED',
+            'FORWARDED',
+            'CLIENT-IP',
+            'CLIENT_IP',
+            'PROXY-AGENT',
+            'HTTP_X_CLUSTER_CLIENT_IP',
+            'FORWARDED_FOR_IP',
+            'HTTP_PROXY_CONNECTION');
+
+        foreach($test_HTTP_proxy_headers as $header){
+            if (isset($_SERVER[$header]) && !empty($_SERVER[$header])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private $_isClientRequest = -1;
+    function isClientRequest(){
+        if($this->_isClientRequest == -1){
+            $ip = $this->getIP();
+            $this->_isClientRequest = ($ip == '127.0.0.1' || $ip == '::1');
+        }
+        return $this->_isClientRequest;
+    }
     /**
      * Get IP address of client marchine
      */
@@ -100,7 +142,7 @@ class SERVER
      * Get Current website url.
      */
     const SITE_URL = 12;
-    
+
     /**
      * Get requested protocol
      */
@@ -111,15 +153,19 @@ class SERVER
     **/
     const HTTP_REFERER = 14;
 
+    /**
+    * Get Country Code value (in ISO Alpha 2). This function will work only when you are using cloudflare and enable IPGeolocation option in Network app.
+    **/
+    const HTTP_CF_IPCOUNTRY = 15;
 
     /**
-     * 
-     * @param Server $serverGlobalVariable
-     * @return Mix the value of server variable
+     *
+     * @param int $serverGlobalVariable
+     * @return Mixed the value of server variable
      */
     function get($serverGlobalVariable){
         if ($serverGlobalVariable == 0) return $this->getIP ();
-        if ($serverGlobalVariable == 12) return $this->getSiteURL() ;
+        if ($serverGlobalVariable == 12) return $this->getSiteURL();
         if ($serverGlobalVariable == 13) return $this->getProtocol();
         if (isset($this->index[$serverGlobalVariable])){
         	if(isset($_SERVER[$this->index[$serverGlobalVariable]]) === false) return null;
