@@ -236,7 +236,7 @@ class ROUTE{
         };*/
 
         $fnjs = function($js) use (&$fnCmt){
-            $js = $fnCmt($js);
+            // $js = $fnCmt($js);
             $reg = array(
                 '^\s*(.*?)\s*$'                                 => '$1',
                 '(\s+)([:,])(\s+)'                           => ' $2 ',
